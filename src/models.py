@@ -16,7 +16,7 @@ class RGenerator(nn.Module):
         x = self.fc2(x)
         return x
 
-class RDiscriminator(nn.Module):
+class RCritic(nn.Module):
     def __init__(self):
         super().__init__()
         self.rnn = nn.GRU(1, 32)
@@ -28,25 +28,18 @@ class RDiscriminator(nn.Module):
         x = self.fc1(x)
         x = F.gelu(x)
         x = self.fc2(x)
-        return torch.sigmoid(x)
+        return x
 
 class RGAN(nn.Module):
+    ''' An implementation of a Recurrent Generative Adversarial Network. '''
     def __init__(self):
         super().__init__()
         self.gen = RGenerator()
-        self.dis = RDiscriminator()
+        self.crt = RCritic()
 
     def forward(self, x: torch.FloatTensor) -> torch.FloatTensor:
         fake = self.gen(x)
-        return self.dis(fake)
-
-    def freeze_discriminator(self):
-        for param in self.dis.parameters():
-            param.requires_grad = False
-
-    def unfreeze_discriminator(self):
-        for param in self.dis.parameters():
-            param.requires_grad = True
+        return self.crt(fake)
 
 if __name__ == '__main__':
     gan = RGAN()
