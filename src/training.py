@@ -36,11 +36,10 @@ def train_gan(gan: RGAN, dataloader: DataLoader, lr: float = 3e-4,
 
             for reals in dataloader:
     
-                # Get the sequence length of the batch
-                seq_len = reals[0].shape[1]
+                # Get the batch size and sequence length of the batch
+                batch_size, seq_len = reals[0].shape
 
-                # Reshape from [batch_size, seq_len] to 
-                # [seq_len, batch_size, 1]
+                # [batch_size, seq_len] -> [seq_len, batch_size, 1]
                 reals = reals[0].transpose(0, 1).unsqueeze(2)
 
 
@@ -50,15 +49,16 @@ def train_gan(gan: RGAN, dataloader: DataLoader, lr: float = 3e-4,
 
                 # Compute Wasserstein loss
                 c_optim.zero_grad()
-                noise = torch.ones_like(reals)
-                noise *= torch.rand(seq_len).unsqueeze(1).unsqueeze(2)
+                noise = torch.ones_like(reals) * torch.randn(1, batch_size, 1)
                 c_loss = torch.mean(gan(noise) - gan.crt(reals))
-                avg_c_loss += float(c_loss) / len(dataloader)
 
                 # Add an l2 regularisation term
                 norms = torch.FloatTensor([torch.norm(p) 
                     for p in gan.crt.parameters()])
                 c_loss += l2_reg * (norms ** 2).sum()
+
+                # Compute average loss for logging
+                avg_c_loss += float(c_loss) / len(dataloader)
 
                 # Backprop gradients
                 c_loss.backward()
@@ -76,8 +76,10 @@ def train_gan(gan: RGAN, dataloader: DataLoader, lr: float = 3e-4,
 
                 # Compute Wasserstein loss
                 g_optim.zero_grad()
-                noise = torch.randn_like(reals)
+                noise = torch.ones_like(reals) * torch.randn(1, batch_size, 1)
                 g_loss = -torch.mean(gan(noise))
+
+                # Compute average loss for logging
                 avg_g_loss += float(g_loss) / len(dataloader)
 
                 # Backprop gradients
@@ -86,25 +88,27 @@ def train_gan(gan: RGAN, dataloader: DataLoader, lr: float = 3e-4,
                 g_sched.step()
             
             # Logging
-            if epoch % 5 == 0:
-                with torch.no_grad():
-                    inputs = torch.FloatTensor([[[0]] for _ in range(seq_len)])
-                    fake = gan.gen(inputs)
-                    fake0 = fake[0][0][0].numpy()
-                    fake1 = fake[1][0][0].numpy()
-                pbar.set_description(\
-                    f'Epoch {epoch:3} - '\
-                    f'crt_loss {avg_c_loss:.3f} - '\
-                    f'gen_loss {avg_g_loss:.3f} - '\
-                    f'fake_pair ({fake0:.3f}, {fake1:.3f}) - '\
-                    f'distance: {abs(fake1 - fake0):.3f}'
-                )
+            with torch.no_grad():
+                noise = torch.ones(2, 1, 1) * torch.randn(1, 1, 1)
+                fake = gan.gen(noise)
+                fake0 = fake[0][0][0].numpy()
+                fake1 = fake[1][0][0].numpy()
+            pbar.set_description(\
+                f'Epoch {epoch:3} - '\
+                f'crt_loss {avg_c_loss:.3f} - '\
+                f'gen_loss {avg_g_loss:.3f} - '\
+                f'fake_pair ({fake0:.3f}, {fake1:.3f}) - '\
+                f'distance: {abs(fake1 - fake0):.3f}'
+            )
 
 if __name__ == '__main__':
     import numpy as np
+
+    DATASET_SIZE = 1000
+
     gan = RGAN()
-    rnd = np.random.uniform(-1, 2, size = 1000)
+    rnd = np.random.uniform(-1, 2, size = DATASET_SIZE)
     data = [[n, n+1] for n in rnd]
     dataset = TensorDataset(torch.FloatTensor(data))
     dataloader = DataLoader(dataset, batch_size = 32, shuffle = True)
-    train_gan(gan, dataloader)
+    train_gan(gan, dataloader, lr_reduction_step_size = 1e5 // DATASET_SIZE)
