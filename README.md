@@ -1,3 +1,3 @@
-# GAN
+# Timeseries
 
-Playing around with Generative Adversarial Networks.
+Playing around with time series.
